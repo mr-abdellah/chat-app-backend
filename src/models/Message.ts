@@ -1,7 +1,12 @@
-const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/database");
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../config/database";
+import { MessageAttributes, MessageCreationAttributes } from "../types";
 
-const Message = sequelize.define(
+interface MessageInstance
+  extends Model<MessageAttributes, MessageCreationAttributes>,
+    MessageAttributes {}
+
+const Message = sequelize.define<MessageInstance>(
   "Message",
   {
     id: {
@@ -19,7 +24,7 @@ const Message = sequelize.define(
     },
     message: {
       type: DataTypes.TEXT,
-      allowNull: true, // Now optional for file-only messages
+      allowNull: true,
     },
     fileUrl: {
       type: DataTypes.STRING,
@@ -47,7 +52,7 @@ const Message = sequelize.define(
     timestamps: true,
     updatedAt: false,
     validate: {
-      messageOrFile() {
+      messageOrFile(this: MessageInstance) {
         if (!this.message && !this.fileUrl) {
           throw new Error("Either message or file must be provided");
         }
@@ -56,4 +61,4 @@ const Message = sequelize.define(
   }
 );
 
-module.exports = Message;
+export default Message;

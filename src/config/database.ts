@@ -1,13 +1,15 @@
-const { Sequelize } = require("sequelize");
-require("dotenv").config();
+import { Sequelize } from "sequelize";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
+  process.env.DB_NAME as string,
+  process.env.DB_USER as string,
+  process.env.DB_PASSWORD as string,
   {
     host: process.env.DB_HOST,
-    dialect: process.env.DB_DIALECT,
+    dialect: process.env.DB_DIALECT as "mysql",
     logging: false,
     pool: {
       max: 5,
@@ -18,7 +20,7 @@ const sequelize = new Sequelize(
   }
 );
 
-const connectDB = async () => {
+export const connectDB = async (): Promise<void> => {
   try {
     await sequelize.authenticate();
     console.log("Database connection established successfully.");
@@ -30,4 +32,4 @@ const connectDB = async () => {
   }
 };
 
-module.exports = { sequelize, connectDB };
+export { sequelize };

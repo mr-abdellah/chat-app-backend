@@ -1,9 +1,27 @@
-const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/database");
-const bcrypt = require("bcryptjs");
+import { DataTypes, Model } from "sequelize";
+import { sequelize } from "../config/database";
+import bcrypt from "bcryptjs";
+import { UserAttributes, UserCreationAttributes } from "../types";
 
-const User = sequelize.define(
-  "User",
+class User
+  extends Model<UserAttributes, UserCreationAttributes>
+  implements UserAttributes
+{
+  declare id: number;
+  declare username: string;
+  declare email: string;
+  declare password: string;
+  declare avatar?: string;
+  declare bio?: string;
+  declare createdAt: Date;
+
+  // Instance method defined directly in the class
+  async validatePassword(password: string): Promise<boolean> {
+    return await bcrypt.compare(password, this.password);
+  }
+}
+
+User.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -50,11 +68,12 @@ const User = sequelize.define(
     },
   },
   {
+    sequelize,
     tableName: "users",
     timestamps: true,
     updatedAt: false,
     hooks: {
-      beforeCreate: async (user) => {
+      beforeCreate: async (user: User) => {
         if (user.password) {
           const salt = await bcrypt.genSalt(10);
           user.password = await bcrypt.hash(user.password, salt);
@@ -64,9 +83,4 @@ const User = sequelize.define(
   }
 );
 
-// Instance method to check password
-User.prototype.validatePassword = async function (password) {
-  return await bcrypt.compare(password, this.password);
-};
-
-module.exports = User;
+export default User;
