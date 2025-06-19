@@ -1,81 +1,76 @@
-import { Request, Response } from "express";
-import { body, validationResult } from "express-validator";
-import { Op } from "sequelize";
+// src/controllers/authController.ts (COMPLETE UPDATE)
+import bcrypt from "bcryptjs";
+import { Response } from "express";
+import jwt from "jsonwebtoken";
 import User from "../models/User";
-import { AuthService } from "../services/authService";
 import { ApiResponse, AuthenticatedRequest } from "../types";
 
 export class AuthController {
-  static registerValidation = [
-    body("username")
-      .isLength({ min: 3, max: 30 })
-      .withMessage("Username must be between 3 and 30 characters"),
-    body("email").isEmail().withMessage("Please provide a valid email"),
-    body("password")
-      .isLength({ min: 6 })
-      .withMessage("Password must be at least 6 characters long"),
-  ];
-
-  static loginValidation = [
-    body("email").isEmail().withMessage("Please provide a valid email"),
-    body("password").notEmpty().withMessage("Password is required"),
-  ];
-
-  static async register(
-    req: Request,
-    res: Response<ApiResponse>
-  ): Promise<void> {
+  static async register(req: any, res: Response<ApiResponse>): Promise<void> {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: "Validation failed",
-          errors: errors.array(),
-        });
-        return;
-      }
+      const { username, email, password, bio, avatar } = req.body;
 
-      const { username, email, password, avatar, bio } = req.body;
-
+      // Check if user already exists
       const existingUser = await User.findOne({
-        where: {
-          [Op.or]: [{ email }, { username }],
-        },
+        where: { email },
       });
 
       if (existingUser) {
         res.status(400).json({
           success: false,
-          message: "User with this email or username already exists",
+          message: "User with this email already exists",
         });
         return;
       }
 
-      const newUser = await User.create({
-        username: username.trim(),
-        email: email.toLowerCase().trim(),
-        password,
-        avatar: avatar || null,
-        bio: bio || null,
+      // Check if username is taken
+      const existingUsername = await User.findOne({
+        where: { username },
       });
 
-      const token = AuthService.generateToken({
-        userId: newUser.id,
-        username: newUser.username,
+      if (existingUsername) {
+        res.status(400).json({
+          success: false,
+          message: "Username is already taken",
+        });
+        return;
+      }
+
+      // Hash password
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+      // Create user
+      const user = await User.create({
+        username,
+        email,
+        password: hashedPassword,
+        bio,
+        avatar,
+        isOnline: true,
+        lastSeen: new Date(),
       });
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { userId: user.id, username: user.username, email: user.email },
+        process.env.JWT_SECRET || "your-secret-key",
+        { expiresIn: "7d" }
+      );
 
       res.status(201).json({
         success: true,
         message: "User registered successfully",
         data: {
           user: {
-            id: newUser.id,
-            username: newUser.username,
-            email: newUser.email,
-            avatar: newUser.avatar,
-            bio: newUser.bio,
-            createdAt: newUser.createdAt,
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            avatar: user.avatar,
+            bio: user.bio,
+            isOnline: user.isOnline,
+            lastSeen: user.lastSeen,
+            createdAt: user.createdAt,
           },
           token,
         },
@@ -89,22 +84,13 @@ export class AuthController {
     }
   }
 
-  static async login(req: Request, res: Response<ApiResponse>): Promise<void> {
+  static async login(req: any, res: Response<ApiResponse>): Promise<void> {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: "Validation failed",
-          errors: errors.array(),
-        });
-        return;
-      }
-
       const { email, password } = req.body;
 
+      // Find user by email
       const user = await User.findOne({
-        where: { email: email.toLowerCase().trim() },
+        where: { email },
       });
 
       if (!user) {
@@ -115,8 +101,10 @@ export class AuthController {
         return;
       }
 
-      const isValidPassword = await user.validatePassword(password);
-      if (!isValidPassword) {
+      // Check password
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+
+      if (!isPasswordValid) {
         res.status(401).json({
           success: false,
           message: "Invalid email or password",
@@ -124,10 +112,18 @@ export class AuthController {
         return;
       }
 
-      const token = AuthService.generateToken({
-        userId: user.id,
-        username: user.username,
+      // Update online status
+      await user.update({
+        isOnline: true,
+        lastSeen: new Date(),
       });
+
+      // Generate JWT token
+      const token = jwt.sign(
+        { userId: user.id, username: user.username, email: user.email },
+        process.env.JWT_SECRET || "your-secret-key",
+        { expiresIn: "7d" }
+      );
 
       res.json({
         success: true,
@@ -139,6 +135,8 @@ export class AuthController {
             email: user.email,
             avatar: user.avatar,
             bio: user.bio,
+            isOnline: user.isOnline,
+            lastSeen: user.lastSeen,
             createdAt: user.createdAt,
           },
           token,
@@ -158,7 +156,9 @@ export class AuthController {
     res: Response<ApiResponse>
   ): Promise<void> {
     try {
-      const user = await User.findByPk(req.user!.userId, {
+      const userId = req.user!.userId;
+
+      const user = await User.findByPk(userId, {
         attributes: { exclude: ["password"] },
       });
 
@@ -176,10 +176,80 @@ export class AuthController {
         data: user,
       });
     } catch (error) {
-      console.error("Profile fetch error:", error);
+      console.error("Get profile error:", error);
       res.status(500).json({
         success: false,
         message: "Failed to fetch profile",
+      });
+    }
+  }
+
+  static async updateOnlineStatus(
+    req: AuthenticatedRequest,
+    res: Response<ApiResponse>
+  ): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+      const body = req.body;
+      const isOnline = body ? body?.isOnline : false;
+
+      const user = await User.findByPk(userId);
+
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+        return;
+      }
+
+      await user.update({
+        isOnline: isOnline,
+        lastSeen: new Date(),
+      });
+
+      res.json({
+        success: true,
+        message: "Online status updated successfully",
+        data: {
+          isOnline: user.isOnline,
+          lastSeen: user.lastSeen,
+        },
+      });
+    } catch (error) {
+      console.error("Update online status error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to update online status",
+      });
+    }
+  }
+
+  static async logout(
+    req: AuthenticatedRequest,
+    res: Response<ApiResponse>
+  ): Promise<void> {
+    try {
+      const userId = req.user!.userId;
+
+      const user = await User.findByPk(userId);
+
+      if (user) {
+        await user.update({
+          isOnline: false,
+          lastSeen: new Date(),
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Logout successful",
+      });
+    } catch (error) {
+      console.error("Logout error:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to logout",
       });
     }
   }

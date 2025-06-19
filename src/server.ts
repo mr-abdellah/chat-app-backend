@@ -1,4 +1,4 @@
-// src/server.ts (updated)
+// src/server.ts (COMPLETE UPDATE)
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -8,6 +8,7 @@ import authRoutes from "./routes/authRoutes";
 import messageRoutes from "./routes/messageRoutes";
 import friendRoutes from "./routes/friendRoutes";
 import userRoutes from "./routes/userRoutes";
+import pusherRoutes from "./routes/pusherRoutes";
 import { errorHandler } from "./middleware/errorHandler";
 
 // Import associations
@@ -29,7 +30,8 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // Health check endpoint
 app.get("/", (req, res) => {
   res.json({
-    message: "TypeScript Chat App API with Friend System is running!",
+    message:
+      "TypeScript Chat App API with Friend System and Online Status is running!",
   });
 });
 
@@ -38,6 +40,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/users", userRoutes);
+app.use("/pusher", pusherRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

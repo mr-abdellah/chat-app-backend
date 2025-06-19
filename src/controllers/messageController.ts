@@ -1,9 +1,10 @@
-// src/controllers/messageController.ts (updated methods)
-import { Request, Response } from "express";
+// src/controllers/messageController.ts (COMPLETE UPDATE)
+import { Response } from "express";
 import { Op } from "sequelize";
 import Pusher from "pusher";
 import Message from "../models/Message";
 import Friendship from "../models/Friendship";
+import User from "../models/User";
 import { ApiResponse, AuthenticatedRequest } from "../types";
 import { getFileType } from "../utils/fileUtils";
 
@@ -14,8 +15,9 @@ const pusher = new Pusher({
   cluster: process.env.PUSHER_CLUSTER!,
   useTLS: true,
 });
+
 export class MessageController {
-  static async getAllMessages(req: Request, res: Response): Promise<void> {
+  static async getAllMessages(req: any, res: Response): Promise<void> {
     try {
       const messages = await Message.findAll({
         where: { isPrivate: false },
@@ -78,20 +80,23 @@ export class MessageController {
 
       const newMessage = await Message.create({
         senderId,
-        receiverId: isPrivate ? receiverId : null,
+        receiverId: isPrivate ? receiverId : undefined, // Changed from null to undefined
         username: username,
         message: message.trim(),
         isPrivate,
       });
 
-      // // Trigger appropriate Pusher channel
-      // const channelName = isPrivate
-      //   ? `private-chat-${Math.min(senderId, receiverId)}-${Math.max(
-      //       senderId,
-      //       receiverId
-      //     )}`
-      //   : "chat-channel";
-      const channelName = "chat-channel";
+      // Trigger appropriate Pusher channel
+      let channelName: string;
+
+      if (isPrivate) {
+        // Create consistent private channel name (smaller ID first)
+        const userId1 = Math.min(senderId, receiverId);
+        const userId2 = Math.max(senderId, receiverId);
+        channelName = `private-chat-${userId1}-${userId2}`;
+      } else {
+        channelName = "chat-channel";
+      }
 
       await pusher.trigger(channelName, "new-message", {
         id: newMessage.id,
@@ -117,6 +122,99 @@ export class MessageController {
       res.status(500).json({
         success: false,
         message: "Failed to send message",
+      });
+    }
+  }
+
+  static async sendFileMessage(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { username, message, receiverId } = req.body;
+      const senderId = req.user!.userId;
+      const file = req.file;
+
+      if (!file) {
+        res.status(400).json({
+          success: false,
+          message: "File is required",
+        });
+        return;
+      }
+
+      const isPrivate = !!receiverId;
+
+      // If private message, check friendship
+      if (isPrivate) {
+        const friendship = await Friendship.findOne({
+          where: {
+            [Op.or]: [
+              { userId1: senderId, userId2: parseInt(receiverId) },
+              { userId1: parseInt(receiverId), userId2: senderId },
+            ],
+          },
+        });
+
+        if (!friendship) {
+          res.status(403).json({
+            success: false,
+            message: "Can only send files to friends",
+          });
+          return;
+        }
+      }
+
+      const fileType = getFileType(file.mimetype);
+      const fileUrl = `/uploads/${file.filename}`;
+
+      const newMessage = await Message.create({
+        senderId,
+        receiverId: isPrivate ? parseInt(receiverId) : undefined, // Changed from null to undefined
+        username: username,
+        message: message || undefined, // Changed from null to undefined
+        fileUrl,
+        fileName: file.originalname,
+        fileType,
+        fileSize: file.size,
+        isPrivate,
+      });
+
+      // Trigger appropriate Pusher channel
+      let channelName: string;
+
+      if (isPrivate) {
+        const userId1 = Math.min(senderId, parseInt(receiverId));
+        const userId2 = Math.max(senderId, parseInt(receiverId));
+        channelName = `private-chat-${userId1}-${userId2}`;
+      } else {
+        channelName = "chat-channel";
+      }
+
+      await pusher.trigger(channelName, "new-message", {
+        id: newMessage.id,
+        senderId: newMessage.senderId,
+        receiverId: newMessage.receiverId,
+        username: newMessage.username,
+        message: newMessage.message,
+        fileUrl: newMessage.fileUrl,
+        fileName: newMessage.fileName,
+        fileType: newMessage.fileType,
+        fileSize: newMessage.fileSize,
+        isPrivate: newMessage.isPrivate,
+        createdAt: newMessage.createdAt,
+      });
+
+      res.status(201).json({
+        success: true,
+        message: "File message sent successfully",
+        data: newMessage,
+      });
+    } catch (error) {
+      console.error("Error sending file message:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to send file message",
       });
     }
   }
@@ -173,87 +271,17 @@ export class MessageController {
     }
   }
 
-  static async sendFileMessage(
-    req: Request,
-    res: Response<ApiResponse>
-  ): Promise<void> {
-    try {
-      const { username, message } = req.body;
-      const file = req.file;
-
-      if (!username) {
-        res.status(400).json({
-          success: false,
-          message: "Username is required",
-        });
-        return;
-      }
-
-      if (!file && !message) {
-        res.status(400).json({
-          success: false,
-          message: "Either file or message is required",
-        });
-        return;
-      }
-
-      const messageData: any = {
-        username: username.trim(),
-        message: message ? message.trim() : null,
-      };
-
-      if (file) {
-        if (file.size === undefined) {
-          res.status(400).json({
-            success: false,
-            message: "File size is missing",
-          });
-          return;
-        }
-
-        messageData.fileUrl = `/uploads/${file.filename}`;
-        messageData.fileName = file.originalname;
-        messageData.fileType = getFileType(file.mimetype);
-        messageData.fileSize = file.size;
-      }
-
-      const newMessage = await Message.create(messageData);
-
-      await pusher.trigger("chat-channel", "new-message", {
-        id: newMessage.id,
-        username: newMessage.username,
-        message: newMessage.message,
-        fileUrl: newMessage.fileUrl,
-        fileName: newMessage.fileName,
-        fileType: newMessage.fileType,
-        fileSize: newMessage.fileSize,
-        createdAt: newMessage.createdAt,
-      });
-
-      res.status(201).json({
-        success: true,
-        message: "File message sent successfully",
-        data: newMessage,
-      });
-    } catch (error) {
-      console.error("Error sending file message:", error);
-      res.status(500).json({
-        success: false,
-        message: "Failed to send file message",
-      });
-    }
-  }
-
-  static async getMessagesByUser(
-    req: Request,
-    res: Response<ApiResponse>
-  ): Promise<void> {
+  static async getMessagesByUser(req: any, res: Response): Promise<void> {
     try {
       const { username } = req.params;
 
       const messages = await Message.findAll({
-        where: { username },
-        order: [["createdAt", "ASC"]],
+        where: {
+          username,
+          isPrivate: false,
+        },
+        order: [["createdAt", "DESC"]],
+        limit: 50,
       });
 
       res.json({

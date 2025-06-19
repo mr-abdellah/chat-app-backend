@@ -7,7 +7,10 @@ export interface UserAttributes {
   password: string;
   avatar?: string;
   bio?: string;
+  isOnline: boolean;
+  lastSeen: Date;
   createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface UserCreationAttributes {
@@ -16,6 +19,8 @@ export interface UserCreationAttributes {
   password: string;
   avatar?: string;
   bio?: string;
+  isOnline?: boolean;
+  lastSeen?: Date;
 }
 
 export interface MessageAttributes {
@@ -118,6 +123,8 @@ export interface FriendWithProfile {
   email: string;
   avatar?: string;
   bio?: string;
+  isOnline: boolean;
+  lastSeen: Date;
   createdAt: Date;
   friendshipCreatedAt: Date;
 }

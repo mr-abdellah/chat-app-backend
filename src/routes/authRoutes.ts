@@ -4,12 +4,14 @@ import { authenticateToken } from "../middleware/auth";
 
 const router = Router();
 
-router.post(
-  "/register",
-  AuthController.registerValidation,
-  AuthController.register
-);
-router.post("/login", AuthController.loginValidation, AuthController.login);
+router.post("/register", AuthController.register);
+router.post("/login", AuthController.login);
 router.get("/profile", authenticateToken, AuthController.getProfile);
+router.post(
+  "/online-status",
+  authenticateToken,
+  AuthController.updateOnlineStatus
+);
+router.post("/logout", authenticateToken, AuthController.logout);
 
 export default router;

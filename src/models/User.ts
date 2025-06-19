@@ -1,6 +1,6 @@
+// src/models/User.ts (COMPLETE UPDATE)
 import { DataTypes, Model } from "sequelize";
 import { sequelize } from "../config/database";
-import bcrypt from "bcryptjs";
 import { UserAttributes, UserCreationAttributes } from "../types";
 
 class User
@@ -13,12 +13,10 @@ class User
   declare password: string;
   declare avatar?: string;
   declare bio?: string;
+  declare isOnline: boolean;
+  declare lastSeen: Date;
   declare createdAt: Date;
-
-  // Instance method defined directly in the class
-  async validatePassword(password: string): Promise<boolean> {
-    return await bcrypt.compare(password, this.password);
-  }
+  declare updatedAt: Date;
 }
 
 User.init(
@@ -34,7 +32,7 @@ User.init(
       unique: true,
       validate: {
         notEmpty: true,
-        len: [3, 30],
+        len: [3, 50],
       },
     },
     email: {
@@ -51,7 +49,7 @@ User.init(
       allowNull: false,
       validate: {
         notEmpty: true,
-        len: [6, 100],
+        len: [6, 255],
       },
     },
     avatar: {
@@ -62,7 +60,19 @@ User.init(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    isOnline: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    lastSeen: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
     createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW,
     },
@@ -71,15 +81,6 @@ User.init(
     sequelize,
     tableName: "users",
     timestamps: true,
-    updatedAt: false,
-    hooks: {
-      beforeCreate: async (user: User) => {
-        if (user.password) {
-          const salt = await bcrypt.genSalt(10);
-          user.password = await bcrypt.hash(user.password, salt);
-        }
-      },
-    },
   }
 );
 
