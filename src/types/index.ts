@@ -56,3 +56,68 @@ export interface ApiResponse<T = any> {
   data?: T;
   errors?: any[];
 }
+
+// src/types/index.ts (additions)
+export interface FriendRequestAttributes {
+  id: number;
+  senderId: number;
+  receiverId: number;
+  status: "pending" | "accepted" | "rejected";
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FriendRequestCreationAttributes {
+  senderId: number;
+  receiverId: number;
+  status?: "pending" | "accepted" | "rejected";
+}
+
+export interface FriendshipAttributes {
+  id: number;
+  userId1: number;
+  userId2: number;
+  createdAt: Date;
+}
+
+export interface FriendshipCreationAttributes {
+  userId1: number;
+  userId2: number;
+}
+
+// Update MessageAttributes to include new fields
+export interface MessageAttributes {
+  id: number;
+  senderId: number;
+  receiverId?: number;
+  username: string;
+  message?: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: "image" | "video" | "document" | "audio";
+  fileSize?: number;
+  isPrivate: boolean;
+  createdAt: Date;
+}
+
+export interface MessageCreationAttributes {
+  senderId: number;
+  receiverId?: number;
+  username: string;
+  message?: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: "image" | "video" | "document" | "audio";
+  fileSize?: number;
+  isPrivate?: boolean;
+}
+
+export interface FriendWithProfile {
+  id: number;
+  username: string;
+  email: string;
+  avatar?: string;
+  bio?: string;
+  createdAt: Date;
+  friendshipCreatedAt: Date;
+}

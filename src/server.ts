@@ -1,3 +1,4 @@
+// src/server.ts (updated)
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -5,7 +6,12 @@ import dotenv from "dotenv";
 import { connectDB } from "./config/database";
 import authRoutes from "./routes/authRoutes";
 import messageRoutes from "./routes/messageRoutes";
+import friendRoutes from "./routes/friendRoutes";
+import userRoutes from "./routes/userRoutes";
 import { errorHandler } from "./middleware/errorHandler";
+
+// Import associations
+import "./models/associations";
 
 dotenv.config();
 
@@ -23,13 +29,15 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // Health check endpoint
 app.get("/", (req, res) => {
   res.json({
-    message: "TypeScript Chat App API with Authentication is running!",
+    message: "TypeScript Chat App API with Friend System is running!",
   });
 });
 
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/friends", friendRoutes);
+app.use("/api/users", userRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

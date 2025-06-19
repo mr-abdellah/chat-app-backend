@@ -22,7 +22,8 @@ export const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     const allowedTypes =
-      /jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|pdf|doc|docx|txt|rtf|odt|xlsx|xls|ppt|pptx/;
+      /jpeg|jpg|png|gif|webp|mp4|mov|avi|mkv|pdf|doc|docx|txt|rtf|odt|xlsx|xls|ppt|pptx|m4a/;
+
     const extname = allowedTypes.test(
       path.extname(file.originalname).toLowerCase()
     );

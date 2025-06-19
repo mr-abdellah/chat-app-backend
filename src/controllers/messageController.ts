@@ -1,7 +1,10 @@
+// src/controllers/messageController.ts (updated methods)
 import { Request, Response } from "express";
+import { Op } from "sequelize";
 import Pusher from "pusher";
 import Message from "../models/Message";
-import { ApiResponse } from "../types";
+import Friendship from "../models/Friendship";
+import { ApiResponse, AuthenticatedRequest } from "../types";
 import { getFileType } from "../utils/fileUtils";
 
 const pusher = new Pusher({
@@ -11,14 +14,11 @@ const pusher = new Pusher({
   cluster: process.env.PUSHER_CLUSTER!,
   useTLS: true,
 });
-
 export class MessageController {
-  static async getAllMessages(
-    req: Request,
-    res: Response<ApiResponse>
-  ): Promise<void> {
+  static async getAllMessages(req: Request, res: Response): Promise<void> {
     try {
       const messages = await Message.findAll({
+        where: { isPrivate: false },
         order: [["createdAt", "ASC"]],
         limit: 100,
       });
@@ -38,33 +38,72 @@ export class MessageController {
   }
 
   static async sendMessage(
-    req: Request,
-    res: Response<ApiResponse>
+    req: AuthenticatedRequest,
+    res: Response
   ): Promise<void> {
     try {
-      const { username, message } = req.body;
+      const { message, receiverId } = req.body;
+      const senderId = req.user!.userId;
+      const username = req.user!.username;
 
-      if (!username || !message) {
+      if (!message) {
         res.status(400).json({
           success: false,
-          message: "Username and message are required",
+          message: "Message is required",
         });
         return;
       }
 
+      const isPrivate = !!receiverId;
+
+      // If private message, check friendship
+      if (isPrivate) {
+        const friendship = await Friendship.findOne({
+          where: {
+            [Op.or]: [
+              { userId1: senderId, userId2: receiverId },
+              { userId1: receiverId, userId2: senderId },
+            ],
+          },
+        });
+
+        if (!friendship) {
+          res.status(403).json({
+            success: false,
+            message: "Can only send messages to friends",
+          });
+          return;
+        }
+      }
+
       const newMessage = await Message.create({
-        username: username.trim(),
+        senderId,
+        receiverId: isPrivate ? receiverId : null,
+        username: username,
         message: message.trim(),
+        isPrivate,
       });
 
-      await pusher.trigger("chat-channel", "new-message", {
+      // // Trigger appropriate Pusher channel
+      // const channelName = isPrivate
+      //   ? `private-chat-${Math.min(senderId, receiverId)}-${Math.max(
+      //       senderId,
+      //       receiverId
+      //     )}`
+      //   : "chat-channel";
+      const channelName = "chat-channel";
+
+      await pusher.trigger(channelName, "new-message", {
         id: newMessage.id,
+        senderId: newMessage.senderId,
+        receiverId: newMessage.receiverId,
         username: newMessage.username,
         message: newMessage.message,
         fileUrl: newMessage.fileUrl,
         fileName: newMessage.fileName,
         fileType: newMessage.fileType,
         fileSize: newMessage.fileSize,
+        isPrivate: newMessage.isPrivate,
         createdAt: newMessage.createdAt,
       });
 
@@ -78,6 +117,58 @@ export class MessageController {
       res.status(500).json({
         success: false,
         message: "Failed to send message",
+      });
+    }
+  }
+
+  static async getPrivateMessages(
+    req: AuthenticatedRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const { friendId } = req.params;
+      const userId = req.user!.userId;
+
+      // Verify friendship
+      const friendship = await Friendship.findOne({
+        where: {
+          [Op.or]: [
+            { userId1: userId, userId2: parseInt(friendId) },
+            { userId1: parseInt(friendId), userId2: userId },
+          ],
+        },
+      });
+
+      if (!friendship) {
+        res.status(403).json({
+          success: false,
+          message: "Can only view messages with friends",
+        });
+        return;
+      }
+
+      const messages = await Message.findAll({
+        where: {
+          isPrivate: true,
+          [Op.or]: [
+            { senderId: userId, receiverId: parseInt(friendId) },
+            { senderId: parseInt(friendId), receiverId: userId },
+          ],
+        },
+        order: [["createdAt", "ASC"]],
+        limit: 100,
+      });
+
+      res.json({
+        success: true,
+        message: "Private messages fetched successfully",
+        data: messages,
+      });
+    } catch (error) {
+      console.error("Error fetching private messages:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch private messages",
       });
     }
   }
@@ -112,6 +203,14 @@ export class MessageController {
       };
 
       if (file) {
+        if (file.size === undefined) {
+          res.status(400).json({
+            success: false,
+            message: "File size is missing",
+          });
+          return;
+        }
+
         messageData.fileUrl = `/uploads/${file.filename}`;
         messageData.fileName = file.originalname;
         messageData.fileType = getFileType(file.mimetype);
